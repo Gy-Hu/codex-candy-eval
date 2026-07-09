@@ -48,12 +48,15 @@ def resolve_api_key() -> str:
     sys.exit("未找到 API key：请设置 YUNWU_API_KEY 或 OPENAI_API_KEY 环境变量。")
 
 
-def run_one(base_url: str, key: str, model: str, index: int) -> dict:
-    body = json.dumps({
+def run_one(base_url: str, key: str, model: str, effort: str | None, index: int) -> dict:
+    payload = {
         "model": model,
         "messages": [{"role": "user", "content": PROMPT}],
         "max_tokens": 32768,
-    }).encode()
+    }
+    if effort:
+        payload["reasoning_effort"] = effort
+    body = json.dumps(payload).encode()
     req = urllib.request.Request(
         f"{base_url.rstrip('/')}/chat/completions", data=body,
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
@@ -79,6 +82,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("-m", "--model", required=True)
+    parser.add_argument("-r", "--reasoning-effort", default=None,
+                        help="reasoning_effort 字段值（如 low/high）；不传则不发送该字段，"
+                             "由模型用默认思考预算。各家取值不同，是否生效取决于端点是否透传")
     parser.add_argument("-n", "--tests", type=int, default=1)
     parser.add_argument("-j", "--jobs", type=int, default=5,
                         help="并发请求数（默认 5）")
@@ -89,7 +95,7 @@ def main() -> None:
 
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         results = list(pool.map(
-            lambda i: run_one(args.base_url, key, args.model, i),
+            lambda i: run_one(args.base_url, key, args.model, args.reasoning_effort, i),
             range(1, args.tests + 1)))
     for r in results:
         print(json.dumps(r, ensure_ascii=False))
